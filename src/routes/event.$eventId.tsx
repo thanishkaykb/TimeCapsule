@@ -227,33 +227,33 @@ function EditRevealDialog({ eventId, currentReveal, onSaved }: { eventId: string
   );
 }
 
-function Gallery({ photos, revealed, userId, members, onChanged }: { photos: any[]; revealed: boolean; userId: string; members: any[]; onChanged: () => void }) {
-  const myPhotos = photos.filter((p) => p.user_id === userId);
-  const otherCount = photos.length - myPhotos.length;
-  const visible = revealed ? photos : myPhotos;
-
-  if (visible.length === 0 && !revealed) {
+function Gallery({ photos, revealed, members }: { photos: any[]; revealed: boolean; userId: string; members: any[]; onChanged: () => void }) {
+  if (!revealed) {
     return (
       <div className="mt-10 rounded-3xl border border-dashed border-border bg-card/40 p-12 text-center">
         <Lock className="mx-auto h-8 w-8 text-primary" />
         <p className="mt-3 font-display text-2xl">The film is developing</p>
-        <p className="mt-1 text-muted-foreground">Snap photos or videos now — they'll appear for everyone at reveal time.</p>
+        <p className="mt-1 text-muted-foreground">
+          Every shot — including yours — stays sealed until reveal time. Keep snapping; nobody peeks until then.
+        </p>
+      </div>
+    );
+  }
+
+  if (photos.length === 0) {
+    return (
+      <div className="mt-10 rounded-3xl border border-dashed border-border bg-card/40 p-12 text-center">
+        <p className="font-display text-2xl">No shots yet</p>
+        <p className="mt-1 text-muted-foreground">Be the first to capture the moment.</p>
       </div>
     );
   }
 
   return (
     <div className="mt-10">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-2xl font-display">{revealed ? "Album" : "Your shots"}</h2>
-        {!revealed && otherCount > 0 && (
-          <span className="text-sm text-muted-foreground">
-            <Lock className="inline h-3.5 w-3.5" /> {otherCount} hidden from other guests
-          </span>
-        )}
-      </div>
+      <h2 className="text-2xl font-display">Album</h2>
       <div className="mt-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-        {visible.map((p) => <MediaTile key={p.id} photo={p} members={members} canDelete={p.user_id === userId} onChanged={onChanged} />)}
+        {photos.map((p) => <MediaTile key={p.id} photo={p} members={members} />)}
       </div>
     </div>
   );
