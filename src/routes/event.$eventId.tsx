@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Camera as CamIcon, Clock, Lock, Download, ArrowLeft, Copy, Check, Users, Trash2, Pencil, Play } from "lucide-react";
+import { Camera as CamIcon, Clock, Lock, Download, ArrowLeft, Copy, Check, Users, Pencil, Play } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
 import fileSaver from "file-saver";
@@ -227,41 +227,40 @@ function EditRevealDialog({ eventId, currentReveal, onSaved }: { eventId: string
   );
 }
 
-function Gallery({ photos, revealed, userId, members, onChanged }: { photos: any[]; revealed: boolean; userId: string; members: any[]; onChanged: () => void }) {
-  const myPhotos = photos.filter((p) => p.user_id === userId);
-  const otherCount = photos.length - myPhotos.length;
-  const visible = revealed ? photos : myPhotos;
-
-  if (visible.length === 0 && !revealed) {
+function Gallery({ photos, revealed, members }: { photos: any[]; revealed: boolean; userId: string; members: any[]; onChanged: () => void }) {
+  if (!revealed) {
     return (
       <div className="mt-10 rounded-3xl border border-dashed border-border bg-card/40 p-12 text-center">
         <Lock className="mx-auto h-8 w-8 text-primary" />
         <p className="mt-3 font-display text-2xl">The film is developing</p>
-        <p className="mt-1 text-muted-foreground">Snap photos or videos now — they'll appear for everyone at reveal time.</p>
+        <p className="mt-1 text-muted-foreground">
+          Every shot — including yours — stays sealed until reveal time. Keep snapping; nobody peeks until then.
+        </p>
+      </div>
+    );
+  }
+
+  if (photos.length === 0) {
+    return (
+      <div className="mt-10 rounded-3xl border border-dashed border-border bg-card/40 p-12 text-center">
+        <p className="font-display text-2xl">No shots yet</p>
+        <p className="mt-1 text-muted-foreground">Be the first to capture the moment.</p>
       </div>
     );
   }
 
   return (
     <div className="mt-10">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-2xl font-display">{revealed ? "Album" : "Your shots"}</h2>
-        {!revealed && otherCount > 0 && (
-          <span className="text-sm text-muted-foreground">
-            <Lock className="inline h-3.5 w-3.5" /> {otherCount} hidden from other guests
-          </span>
-        )}
-      </div>
+      <h2 className="text-2xl font-display">Album</h2>
       <div className="mt-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-        {visible.map((p) => <MediaTile key={p.id} photo={p} members={members} canDelete={p.user_id === userId} onChanged={onChanged} />)}
+        {photos.map((p) => <MediaTile key={p.id} photo={p} members={members} />)}
       </div>
     </div>
   );
 }
 
-function MediaTile({ photo, members, canDelete, onChanged }: { photo: any; members: any[]; canDelete: boolean; onChanged: () => void }) {
+function MediaTile({ photo, members }: { photo: any; members: any[] }) {
   const [url, setUrl] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const isVideo = photo.media_type === "video";
 
   useEffect(() => {
@@ -274,54 +273,28 @@ function MediaTile({ photo, members, canDelete, onChanged }: { photo: any; membe
 
   const taker = members.find((m) => m.user_id === photo.user_id)?.profiles?.display_name ?? "Guest";
 
-  async function handleDelete(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!confirm("Delete this " + (isVideo ? "video" : "photo") + "?")) return;
-    setDeleting(true);
-    const { error: sErr } = await supabase.storage.from("event-photos").remove([photo.storage_path]);
-    if (sErr) { setDeleting(false); return toast.error(sErr.message); }
-    const { error: dErr } = await supabase.from("photos").delete().eq("id", photo.id);
-    setDeleting(false);
-    if (dErr) return toast.error(dErr.message);
-    toast.success("Deleted");
-    onChanged();
-  }
-
   return (
-    <div className="group relative aspect-square overflow-hidden rounded-xl bg-secondary">
-      <a href={url ?? "#"} target="_blank" rel="noreferrer" className="block h-full w-full">
-        {url ? (
-          isVideo ? (
-            <>
-              <video src={url} className="h-full w-full object-cover" playsInline muted preload="metadata" />
-              <div className="absolute inset-0 grid place-items-center pointer-events-none">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white">
-                  <Play className="h-4 w-4 fill-white" />
-                </span>
-              </div>
-            </>
-          ) : (
-            <img src={url} alt={`Photo by ${taker}`} className="h-full w-full object-cover transition group-hover:scale-105" loading="lazy" />
-          )
+    <a href={url ?? "#"} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden rounded-xl bg-secondary block">
+      {url ? (
+        isVideo ? (
+          <>
+            <video src={url} className="h-full w-full object-cover" playsInline muted preload="metadata" />
+            <div className="absolute inset-0 grid place-items-center pointer-events-none">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white">
+                <Play className="h-4 w-4 fill-white" />
+              </span>
+            </div>
+          </>
         ) : (
-          <div className="h-full w-full animate-pulse bg-muted" />
-        )}
-      </a>
+          <img src={url} alt={`Photo by ${taker}`} className="h-full w-full object-cover transition group-hover:scale-105" loading="lazy" />
+        )
+      ) : (
+        <div className="h-full w-full animate-pulse bg-muted" />
+      )}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-xs text-white opacity-0 transition group-hover:opacity-100 pointer-events-none">
         {taker} · {new Date(photo.taken_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
       </div>
-      {canDelete && (
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          aria-label="Delete"
-          className="absolute top-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white opacity-0 transition group-hover:opacity-100 hover:bg-red-600 disabled:opacity-50"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      )}
-    </div>
+    </a>
   );
 }
 
