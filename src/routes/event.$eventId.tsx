@@ -1,15 +1,19 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Camera as CamIcon, Clock, Lock, Download, ArrowLeft, Copy, Check, Users } from "lucide-react";
+import { Camera as CamIcon, Clock, Lock, Download, ArrowLeft, Copy, Check, Users, Trash2, Pencil, Play } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
-import { saveAs } from "file-saver";
+import fileSaver from "file-saver";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Header } from "@/components/Header";
 import { CameraCapture } from "@/components/CameraCapture";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+const { saveAs } = fileSaver;
 
 export const Route = createFileRoute("/event/$eventId")({
   component: EventPage,
@@ -31,6 +35,14 @@ function EventPage() {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Auto-join if not yet a member (so a host or invited user landing on the link gets membership)
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      await supabase.from("event_members").insert({ event_id: eventId, user_id: user.id }).then(() => {});
+    })();
+  }, [user, eventId]);
 
   const eventQ = useQuery({
     queryKey: ["event", eventId],
@@ -55,9 +67,13 @@ function EventPage() {
     },
   });
 
+  const event = eventQ.data;
+  const revealAt = event ? new Date(event.reveal_at).getTime() : 0;
+  const revealed = now >= revealAt;
+
   const photosQ = useQuery({
-    queryKey: ["photos", eventId, now > new Date(eventQ.data?.reveal_at ?? 0).getTime()],
-    enabled: !!eventQ.data,
+    queryKey: ["photos", eventId, revealed],
+    enabled: !!event,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("photos")
@@ -69,9 +85,6 @@ function EventPage() {
     },
   });
 
-  const event = eventQ.data;
-  const revealAt = event ? new Date(event.reveal_at).getTime() : 0;
-  const revealed = now >= revealAt;
   const remaining = useMemo(() => {
     const diff = Math.max(0, revealAt - now);
     const d = Math.floor(diff / 86400000);
@@ -83,6 +96,8 @@ function EventPage() {
 
   if (authLoading || eventQ.isLoading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Loading…</div>;
   if (!event) return <div className="min-h-screen grid place-items-center text-muted-foreground">Event not found</div>;
+
+  const isHost = user?.id === event.host_id;
 
   return (
     <div className="min-h-screen">
@@ -107,7 +122,7 @@ function EventPage() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Button size="lg" onClick={() => setShowCamera(true)} className="h-12 px-6">
-                <CamIcon className="mr-2 h-5 w-5" /> Take photo
+                <CamIcon className="mr-2 h-5 w-5" /> Take photo / video
               </Button>
               {revealed && photosQ.data && photosQ.data.length > 0 && (
                 <DownloadButton photos={photosQ.data} eventName={event.name} />
@@ -119,13 +134,15 @@ function EventPage() {
               revealed={revealed}
               userId={user?.id ?? ""}
               members={membersQ.data ?? []}
+              onChanged={() => photosQ.refetch()}
             />
           </div>
 
           <aside className="space-y-4">
             <div className="rounded-2xl border border-border bg-card/70 p-5">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
-                <Clock className="h-4 w-4" /> {revealed ? "Revealed" : "Reveals in"}
+              <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-widest text-muted-foreground">
+                <span className="inline-flex items-center gap-2"><Clock className="h-4 w-4" /> {revealed ? "Revealed" : "Reveals in"}</span>
+                {isHost && <EditRevealDialog eventId={event.id} currentReveal={event.reveal_at} onSaved={() => eventQ.refetch()} />}
               </div>
               {revealed ? (
                 <p className="mt-2 text-2xl font-display">The album is open</p>
@@ -149,7 +166,7 @@ function EventPage() {
                 <Users className="h-4 w-4" /> {membersQ.data?.length ?? 0} guests
               </div>
               <ul className="mt-3 space-y-1 text-sm">
-                {(membersQ.data ?? []).slice(0, 8).map((m: any) => (
+                {(membersQ.data ?? []).slice(0, 12).map((m: any) => (
                   <li key={m.user_id} className="text-foreground/80">
                     {m.profiles?.display_name ?? "Guest"}{m.user_id === event.host_id && <span className="ml-2 text-xs text-primary">host</span>}
                   </li>
@@ -171,7 +188,46 @@ function EventPage() {
   );
 }
 
-function Gallery({ photos, revealed, userId, members }: { photos: any[]; revealed: boolean; userId: string; members: any[] }) {
+function EditRevealDialog({ eventId, currentReveal, onSaved }: { eventId: string; currentReveal: string; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const initial = () => {
+    const d = new Date(currentReveal);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+  const [val, setVal] = useState(initial);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { if (open) setVal(initial()); /* eslint-disable-next-line */ }, [open, currentReveal]);
+
+  async function save() {
+    setBusy(true);
+    const { error } = await supabase.from("events").update({ reveal_at: new Date(val).toISOString() }).eq("id", eventId);
+    setBusy(false);
+    if (error) return toast.error(error.message);
+    toast.success("Reveal time updated");
+    setOpen(false);
+    onSaved();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10">
+          <Pencil className="h-3 w-3" /> Edit
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle className="font-display text-2xl">Edit reveal time</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <Input type="datetime-local" value={val} onChange={(e) => setVal(e.target.value)} />
+          <Button onClick={save} disabled={busy} className="w-full h-11">{busy ? "Saving…" : "Save"}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Gallery({ photos, revealed, userId, members, onChanged }: { photos: any[]; revealed: boolean; userId: string; members: any[]; onChanged: () => void }) {
   const myPhotos = photos.filter((p) => p.user_id === userId);
   const otherCount = photos.length - myPhotos.length;
   const visible = revealed ? photos : myPhotos;
@@ -181,7 +237,7 @@ function Gallery({ photos, revealed, userId, members }: { photos: any[]; reveale
       <div className="mt-10 rounded-3xl border border-dashed border-border bg-card/40 p-12 text-center">
         <Lock className="mx-auto h-8 w-8 text-primary" />
         <p className="mt-3 font-display text-2xl">The film is developing</p>
-        <p className="mt-1 text-muted-foreground">Snap photos now — they'll appear for everyone at reveal time.</p>
+        <p className="mt-1 text-muted-foreground">Snap photos or videos now — they'll appear for everyone at reveal time.</p>
       </div>
     );
   }
@@ -189,9 +245,7 @@ function Gallery({ photos, revealed, userId, members }: { photos: any[]; reveale
   return (
     <div className="mt-10">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-2xl font-display">
-          {revealed ? "Album" : "Your shots"}
-        </h2>
+        <h2 className="text-2xl font-display">{revealed ? "Album" : "Your shots"}</h2>
         {!revealed && otherCount > 0 && (
           <span className="text-sm text-muted-foreground">
             <Lock className="inline h-3.5 w-3.5" /> {otherCount} hidden from other guests
@@ -199,14 +253,17 @@ function Gallery({ photos, revealed, userId, members }: { photos: any[]; reveale
         )}
       </div>
       <div className="mt-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-        {visible.map((p) => <PhotoTile key={p.id} photo={p} members={members} />)}
+        {visible.map((p) => <MediaTile key={p.id} photo={p} members={members} canDelete={p.user_id === userId} onChanged={onChanged} />)}
       </div>
     </div>
   );
 }
 
-function PhotoTile({ photo, members }: { photo: any; members: any[] }) {
+function MediaTile({ photo, members, canDelete, onChanged }: { photo: any; members: any[]; canDelete: boolean; onChanged: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const isVideo = photo.media_type === "video";
+
   useEffect(() => {
     let cancelled = false;
     supabase.storage.from("event-photos").createSignedUrl(photo.storage_path, 3600).then(({ data }) => {
@@ -214,23 +271,57 @@ function PhotoTile({ photo, members }: { photo: any; members: any[] }) {
     });
     return () => { cancelled = true; };
   }, [photo.storage_path]);
+
   const taker = members.find((m) => m.user_id === photo.user_id)?.profiles?.display_name ?? "Guest";
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Delete this " + (isVideo ? "video" : "photo") + "?")) return;
+    setDeleting(true);
+    const { error: sErr } = await supabase.storage.from("event-photos").remove([photo.storage_path]);
+    if (sErr) { setDeleting(false); return toast.error(sErr.message); }
+    const { error: dErr } = await supabase.from("photos").delete().eq("id", photo.id);
+    setDeleting(false);
+    if (dErr) return toast.error(dErr.message);
+    toast.success("Deleted");
+    onChanged();
+  }
+
   return (
-    <a
-      href={url ?? "#"}
-      target="_blank"
-      rel="noreferrer"
-      className="group relative aspect-square overflow-hidden rounded-xl bg-secondary"
-    >
-      {url ? (
-        <img src={url} alt={`Photo by ${taker}`} className="h-full w-full object-cover transition group-hover:scale-105" loading="lazy" />
-      ) : (
-        <div className="h-full w-full animate-pulse bg-muted" />
-      )}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-xs text-white opacity-0 transition group-hover:opacity-100">
+    <div className="group relative aspect-square overflow-hidden rounded-xl bg-secondary">
+      <a href={url ?? "#"} target="_blank" rel="noreferrer" className="block h-full w-full">
+        {url ? (
+          isVideo ? (
+            <>
+              <video src={url} className="h-full w-full object-cover" playsInline muted preload="metadata" />
+              <div className="absolute inset-0 grid place-items-center pointer-events-none">
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white">
+                  <Play className="h-4 w-4 fill-white" />
+                </span>
+              </div>
+            </>
+          ) : (
+            <img src={url} alt={`Photo by ${taker}`} className="h-full w-full object-cover transition group-hover:scale-105" loading="lazy" />
+          )
+        ) : (
+          <div className="h-full w-full animate-pulse bg-muted" />
+        )}
+      </a>
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-xs text-white opacity-0 transition group-hover:opacity-100 pointer-events-none">
         {taker} · {new Date(photo.taken_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
       </div>
-    </a>
+      {canDelete && (
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          aria-label="Delete"
+          className="absolute top-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white opacity-0 transition group-hover:opacity-100 hover:bg-red-600 disabled:opacity-50"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+    </div>
   );
 }
 

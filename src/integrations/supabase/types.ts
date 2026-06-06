@@ -38,6 +38,13 @@ export type Database = {
             referencedRelation: "events"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "event_members_user_id_profiles_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       events: {
@@ -75,6 +82,7 @@ export type Database = {
           caption: string | null
           event_id: string
           id: string
+          media_type: string
           storage_path: string
           taken_at: string
           user_id: string
@@ -83,6 +91,7 @@ export type Database = {
           caption?: string | null
           event_id: string
           id?: string
+          media_type?: string
           storage_path: string
           taken_at?: string
           user_id: string
@@ -91,6 +100,7 @@ export type Database = {
           caption?: string | null
           event_id?: string
           id?: string
+          media_type?: string
           storage_path?: string
           taken_at?: string
           user_id?: string
