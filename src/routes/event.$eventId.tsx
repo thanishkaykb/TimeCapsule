@@ -124,6 +124,7 @@ function EventPage() {
               <Button size="lg" onClick={() => setShowCamera(true)} className="h-12 px-6">
                 <CamIcon className="mr-2 h-5 w-5" /> Take photo / video
               </Button>
+              <UploadButton eventId={eventId} userId={user?.id ?? ""} onUploaded={() => photosQ.refetch()} />
               {revealed && photosQ.data && photosQ.data.length > 0 && (
                 <DownloadButton photos={photosQ.data} eventName={event.name} />
               )}
