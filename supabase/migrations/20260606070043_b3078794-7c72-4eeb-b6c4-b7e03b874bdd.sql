@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.is_event_member(uuid, uuid) FROM authenticated;
