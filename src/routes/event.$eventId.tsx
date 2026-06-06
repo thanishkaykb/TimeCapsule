@@ -327,3 +327,48 @@ function DownloadButton({ photos, eventName }: { photos: any[]; eventName: strin
     </Button>
   );
 }
+
+function UploadButton({ eventId, userId, onUploaded }: { eventId: string; userId: string; onUploaded: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length || !userId) return;
+    setBusy(true);
+    let ok = 0, fail = 0;
+    for (const file of files) {
+      const isVideo = file.type.startsWith("video/");
+      const media_type: "image" | "video" = isVideo ? "video" : "image";
+      const ext = (file.name.split(".").pop() || (isVideo ? "mp4" : "jpg")).toLowerCase();
+      const path = `${eventId}/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("event-photos").upload(path, file, { contentType: file.type || undefined });
+      if (upErr) { fail++; continue; }
+      const { error: dbErr } = await supabase.from("photos").insert({ event_id: eventId, user_id: userId, storage_path: path, media_type });
+      if (dbErr) { fail++; continue; }
+      ok++;
+    }
+    setBusy(false);
+    if (ok) toast.success(`Uploaded ${ok} ${ok === 1 ? "file" : "files"} to the secret album`);
+    if (fail) toast.error(`${fail} upload${fail === 1 ? "" : "s"} failed`);
+    if (ok) onUploaded();
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        className="hidden"
+        onChange={handleFiles}
+      />
+      <Button variant="outline" size="lg" onClick={() => inputRef.current?.click()} disabled={busy} className="h-12 px-6">
+        {busy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Upload className="mr-2 h-5 w-5" />}
+        {busy ? "Uploading…" : "Upload from gallery"}
+      </Button>
+    </>
+  );
+}
