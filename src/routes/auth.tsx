@@ -80,6 +80,14 @@ function AuthPage() {
                 <Button type="submit" disabled={busy} className="w-full h-11">
                   {busy ? "Signing in…" : "Sign in"}
                 </Button>
+                <button
+                  type="button"
+                  onClick={forgotPassword}
+                  disabled={busy}
+                  className="block w-full text-center text-sm text-primary hover:underline disabled:opacity-50"
+                >
+                  Forgot your password?
+                </button>
               </form>
             </TabsContent>
             <TabsContent value="signup">
