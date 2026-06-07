@@ -142,6 +142,7 @@ export type Database = {
         Args: { _event_id: string; _user_id: string }
         Returns: boolean
       }
+      join_event_by_code: { Args: { _code: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

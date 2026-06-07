@@ -190,15 +190,13 @@ function JoinDialog({ onJoined }: { onJoined: () => void }) {
   async function join() {
     if (!code.trim()) return;
     setBusy(true);
-    const { data: ev, error } = await supabase.from("events").select("id").eq("code", code.toUpperCase().trim()).maybeSingle();
-    if (error || !ev) { setBusy(false); return toast.error("Event not found"); }
-    const { error: mErr } = await supabase.from("event_members").insert({ event_id: ev.id, user_id: user!.id });
+    const { data: eventId, error } = await supabase.rpc("join_event_by_code", { _code: code.toUpperCase().trim() });
     setBusy(false);
-    if (mErr && !mErr.message.includes("duplicate")) return toast.error(mErr.message);
+    if (error || !eventId) return toast.error(error?.message ?? "Event not found");
     toast.success("Joined!");
     setOpen(false);
     onJoined();
-    navigate({ to: "/event/$eventId", params: { eventId: ev.id } });
+    navigate({ to: "/event/$eventId", params: { eventId: eventId as string } });
   }
 
   return (
