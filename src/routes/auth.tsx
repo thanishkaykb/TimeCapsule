@@ -54,6 +54,16 @@ function AuthPage() {
     const res = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
     if (res.error) toast.error("Google sign-in failed");
   }
+  async function forgotPassword() {
+    if (!email.trim()) return toast.error("Enter your email above first");
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setBusy(false);
+    if (error) toast.error(error.message);
+    else toast.success("Password reset link sent — check your email");
+  }
 
   return (
     <div className="min-h-screen grid place-items-center px-6 py-10">
@@ -80,6 +90,14 @@ function AuthPage() {
                 <Button type="submit" disabled={busy} className="w-full h-11">
                   {busy ? "Signing in…" : "Sign in"}
                 </Button>
+                <button
+                  type="button"
+                  onClick={forgotPassword}
+                  disabled={busy}
+                  className="block w-full text-center text-sm text-primary hover:underline disabled:opacity-50"
+                >
+                  Forgot your password?
+                </button>
               </form>
             </TabsContent>
             <TabsContent value="signup">
